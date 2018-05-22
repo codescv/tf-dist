@@ -1,0 +1,15 @@
+# ~/.tmuxinator/lr-dist-example.yml
+
+name: lr-dist-example
+root: ~
+
+windows:
+  - trainer:
+      layout: tiled
+      panes:
+          - TF_CONFIG='{"cluster":{"master":["localhost:2222"],"ps":["localhost:2223","localhost:2224"],"worker":["localhost:2225","localhost:2226"]},"task":{"type":"master","index":0},"environment":"cloud"}' python src/lr_dist.py --tag=master
+          - TF_CONFIG='{"cluster":{"master":["localhost:2222"],"ps":["localhost:2223","localhost:2224"],"worker":["localhost:2225","localhost:2226"]},"task":{"type":"ps","index":0},"environment":"cloud"}' python src/lr_dist.py --tag=ps0
+          - TF_CONFIG='{"cluster":{"master":["localhost:2222"],"ps":["localhost:2223","localhost:2224"],"worker":["localhost:2225","localhost:2226"]},"task":{"type":"ps","index":1},"environment":"cloud"}' python src/lr_dist.py --tag=ps1
+          - TF_CONFIG='{"cluster":{"master":["localhost:2222"],"ps":["localhost:2223","localhost:2224"],"worker":["localhost:2225","localhost:2226"]},"task":{"type":"worker","index":0},"environment":"cloud"}' python src/lr_dist.py --tag=worker0
+          - TF_CONFIG='{"cluster":{"master":["localhost:2222"],"ps":["localhost:2223","localhost:2224"],"worker":["localhost:2225","localhost:2226"]},"task":{"type":"worker","index":1},"environment":"cloud"}' python src/lr_dist.py --tag=worker1
+  - tensorboard: tensorboard --logdir tmp/model/lr-dist --port=6006
