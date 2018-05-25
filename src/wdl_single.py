@@ -76,22 +76,23 @@ def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
     return dnn_logit_fn
 
 
-def build_model(filename):
+def build_model(features, labels=None, mode='train'):
     wide_columns, deep_columns = build_model_columns()
-    features, labels = input_fn(filename).make_one_shot_iterator().get_next()
 
     global_step = tf.train.get_or_create_global_step()
 
     cols_to_vars = {}
     with tf.variable_scope(
         'linear',
-        values=features.values()
+        values=features.values(),
+        reuse=tf.AUTO_REUSE
     ):
         linear_logits = tf.feature_column.linear_model(features=features, feature_columns=wide_columns, cols_to_vars=cols_to_vars)
 
     with tf.variable_scope(
         'dnn',
-        values=features.values()
+        values=features.values(),
+        reuse=tf.AUTO_REUSE
     ):
         dnn_logit_fn = _dnn_logit_fn_builder(
             units=1,
@@ -105,39 +106,60 @@ def build_model(filename):
     logits = linear_logits + dnn_logits
 
     predictions = tf.reshape(tf.nn.sigmoid(logits), (-1,))
-    loss = tf.losses.log_loss(labels=labels, predictions=predictions)
-    linear_optimizer = tf.train.FtrlOptimizer(
-        learning_rate=0.1,
-        l1_regularization_strength=0.1,
-        l2_regularization_strength=0.1,
-    )
-    linear_train_op = linear_optimizer.minimize(loss, var_list=tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='linear'))
-    dnn_optimizer = tf.train.AdamOptimizer(
-        learning_rate=0.01
-    )
-    dnn_train_op = dnn_optimizer.minimize(loss, var_list=tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='dnn'))
 
-    train_ops = tf.group(linear_train_op, dnn_train_op)
-    with tf.control_dependencies([train_ops]):
-        with tf.colocate_with(global_step):
-            train_op = tf.assign_add(global_step, 1)
+    if mode == 'train':
+        loss = tf.losses.log_loss(labels=labels, predictions=predictions)
+        linear_optimizer = tf.train.FtrlOptimizer(
+            learning_rate=0.1,
+            l1_regularization_strength=0.1,
+            l2_regularization_strength=0.1,
+        )
+        linear_train_op = linear_optimizer.minimize(loss, var_list=tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='linear'))
+        dnn_optimizer = tf.train.AdamOptimizer(
+            learning_rate=0.01
+        )
+        dnn_train_op = dnn_optimizer.minimize(loss, var_list=tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='dnn'))
 
-    return {
-        'train': {
-            'train_op': train_op,
-            'loss': loss
-        },
-        'init': {
-            'global': [tf.global_variables_initializer()],
-            'local': [tf.local_variables_initializer(), tf.tables_initializer()]
-        },
-        'cols_to_vars': cols_to_vars
-    }
+        train_ops = tf.group(linear_train_op, dnn_train_op)
+        with tf.control_dependencies([train_ops]):
+            with tf.colocate_with(global_step):
+                train_op = tf.assign_add(global_step, 1)
+
+        return {
+            'train': {
+                'train_op': train_op,
+                'loss': loss
+            },
+            'init': {
+                'global': [tf.global_variables_initializer()],
+                'local': [tf.local_variables_initializer(), tf.tables_initializer()]
+            },
+            'cols_to_vars': cols_to_vars,
+        }
+    elif mode == 'predict':
+        return {
+            'predictions': predictions
+        }
+
+
+def input_receiver():
+    wide_columns, deep_columns = build_model_columns()
+    columns = wide_columns + deep_columns
+    feature_spec = tf.feature_column.make_parse_example_spec(columns)
+    serialized_tf_example = tf.placeholder(dtype=tf.string,
+                                           shape=[None],
+                                           name='input')
+    receiver_tensors = {'examples': serialized_tf_example}
+    features = tf.parse_example(serialized_tf_example, feature_spec)
+    rec = tf.estimator.export.ServingInputReceiver(features, receiver_tensors)
+    # print('rec:', rec)
+    return rec
 
 
 def main():
     # build graph
-    model = build_model(filename='census_data/adult.data')
+    features, labels = input_fn(data_file='census_data/adult.data').make_one_shot_iterator().get_next()
+    model = build_model(features=features, labels=labels, mode='train')
 
     # inspect graph variables
     for col, var in model['cols_to_vars'].items():
@@ -152,6 +174,28 @@ def main():
         for step in range(1, 1000):
             result = sess.run(model['train'])
             print('step =', step, 'loss =', result['loss'])
+
+        signature_def_map = {}
+
+        receiver = input_receiver()
+        receiver_tensors = receiver.receiver_tensors
+        pred_model = build_model(features=receiver.features, mode='predict')
+        output = tf.estimator.export.PredictOutput(outputs=pred_model['predictions'])
+        signature_def_map['serving_default'] = output.as_signature_def(receiver_tensors)
+        # print('sig def map:', signature_def_map)
+        local_init_op = tf.group(
+            tf.local_variables_initializer(),
+            tf.tables_initializer(),
+            )
+        builder = tf.saved_model.builder.SavedModelBuilder('export/wdl_single')
+        builder.add_meta_graph_and_variables(
+            sess, [tf.saved_model.tag_constants.SERVING],
+            signature_def_map=signature_def_map,
+            assets_collection=tf.get_collection(
+                tf.GraphKeys.ASSET_FILEPATHS),
+            legacy_init_op=local_init_op,
+            strip_default_attrs=False)
+        builder.save(as_text=False)
 
 
 if __name__ == '__main__':
