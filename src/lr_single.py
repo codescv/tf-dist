@@ -1,4 +1,5 @@
 import os
+import time
 import tensorflow as tf
 from data_tf import build_model_columns, input_fn
 
@@ -44,22 +45,22 @@ def main():
         print('-' * 50)
 
     model_dir = 'tmp/lr_single'
-    profile_dir = os.path.join(model_dir, 'eval')
-    checkpoint_dir = os.path.join(model_dir, 'checkpoint')
+    profile_dir = os.path.join(model_dir, 'profile')
     os.makedirs(profile_dir, exist_ok=True)
+
     # create session
-    hooks = [
-        tf.train.ProfilerHook(save_secs=30, output_dir=profile_dir),
-        tf.train.StopAtStepHook(num_steps=10000)
-    ]
-    with tf.train.MonitoredTrainingSession(hooks=hooks,
-                                           checkpoint_dir=checkpoint_dir,
-                                           log_step_count_steps=60) as sess:
-        # sess.run(model['init'])
+    with tf.Session() as sess:
+        sess.run(model['init'])
         step = 0
-        while not sess.should_stop():
+        time_start = time.time()
+        last_step = step
+        while step < 10000:
             step += 1
             sess.run(model['train'])
+            if step % 60 == 0:
+                print('step/sec:', (step-last_step) / (time.time() - time_start))
+                time_start = time.time()
+                last_step = step
 
 
 if __name__ == '__main__':
