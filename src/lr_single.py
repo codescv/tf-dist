@@ -1,6 +1,6 @@
 import os
 import tensorflow as tf
-from data import build_model_columns, input_fn
+from data_tf import build_model_columns, input_fn
 
 
 def build_model(filename):
@@ -9,7 +9,9 @@ def build_model(filename):
     features, labels = input_fn(filename).make_one_shot_iterator().get_next()
     cols_to_vars = {}
     logits = tf.feature_column.linear_model(features=features, feature_columns=wide_columns, cols_to_vars=cols_to_vars)
-    predictions = tf.reshape(tf.nn.sigmoid(logits), (-1,))
+    # predictions = tf.reshape(tf.nn.sigmoid(logits), (-1,))
+    predictions = tf.nn.sigmoid(logits)
+    # print('labels:', labels.shape, 'predictions:', predictions.shape, 'logits:', logits.shape)
     loss = tf.losses.log_loss(labels=labels, predictions=predictions)
     optimizer = tf.train.FtrlOptimizer(learning_rate=0.1, l1_regularization_strength=0.1, l2_regularization_strength=0.1)
     train_op = optimizer.minimize(loss, global_step=global_step)
@@ -33,7 +35,7 @@ def main():
     logging.basicConfig(level=logging.INFO)
 
     # build graph
-    model = build_model(filename='census_data/adult.data')
+    model = build_model(filename='/Users/chi/Developer/kelin/data/tfslot/part-m-00000')
 
     # inspect graph variables
     for col, var in model['cols_to_vars'].items():
