@@ -1,7 +1,7 @@
 import tensorflow as tf
 import six
 
-from lr_single import build_model_columns, input_fn
+from data import build_model_columns, input_fn
 
 
 def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,

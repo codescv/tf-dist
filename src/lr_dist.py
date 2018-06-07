@@ -3,7 +3,7 @@ import time
 import json
 import tensorflow as tf
 import logging
-from lr_single import build_model_columns, input_fn
+from data import build_model_columns, input_fn
 
 
 def build_model(filename):
