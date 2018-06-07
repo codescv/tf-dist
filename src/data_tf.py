@@ -281,10 +281,7 @@ def build_model_columns(M=10000):
 
 
 def input_fn(data_file, num_epochs=None, shuffle=True, batch_size=1024):
-    """Generate an input function for the Estimator."""
-    assert tf.gfile.Exists(data_file), (
-            '%s not found. Please make sure you have run data_download.py and '
-            'set the --data_dir argument to the correct path.' % data_file)
+    assert tf.gfile.Exists(data_file), ('%s not found.' % data_file)
 
     feature_columns, _ = build_model_columns()
 
@@ -303,6 +300,26 @@ def input_fn(data_file, num_epochs=None, shuffle=True, batch_size=1024):
     dataset = dataset.prefetch(buffer_size=batch_size*10)
 
     dataset = dataset.map(parse_tfrecord, num_parallel_calls=5)
+
+    # We call repeat after shuffling, rather than before, to prevent separate
+    # epochs from blending together.
+    dataset = dataset.repeat(num_epochs)
+    dataset = dataset.batch(batch_size)
+    return dataset
+
+
+def input_fn2(data_file, num_epochs=None, shuffle=True, batch_size=1024):
+    assert tf.gfile.Exists(data_file), ('%s not found.' % data_file)
+
+    feature_columns, _ = build_model_columns()
+
+    # Extract lines from input files using the Dataset API.
+    dataset = tf.data.TFRecordDataset(data_file)
+
+    if shuffle:
+        dataset = dataset.shuffle(buffer_size=batch_size * 10)
+
+    dataset = dataset.prefetch(buffer_size=batch_size*10)
 
     # We call repeat after shuffling, rather than before, to prevent separate
     # epochs from blending together.
