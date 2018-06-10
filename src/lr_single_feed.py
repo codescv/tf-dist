@@ -1,6 +1,8 @@
 import os
 import time
 import tensorflow as tf
+from tensorflow.python.client import timeline
+
 from data_tf import build_model_columns, input_fn2, gen_test_data
 
 
@@ -47,7 +49,7 @@ def main():
     # build graph
     model = build_model(filename=data_path)
 
-    model_dir = 'tmp/lr_single'
+    model_dir = 'tmp/lr_single_feed'
     profile_dir = os.path.join(model_dir, 'profile')
     os.makedirs(profile_dir, exist_ok=True)
     # create session
@@ -59,7 +61,22 @@ def main():
         while step < 10000:
             step += 1
             data_batch = sess.run(model['next_batch'])
-            sess.run(model['train'], feed_dict={model['example']: data_batch})
+
+            should_write_profile = 100 < step < 110
+
+            opts = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE) if should_write_profile else None
+            run_metadata = tf.RunMetadata() if should_write_profile else None
+
+            sess.run(model['train'], feed_dict={model['example']: data_batch}, options=opts, run_metadata=run_metadata)
+
+            if should_write_profile:
+                fetched_timeline = timeline.Timeline(run_metadata.step_stats)
+                chrome_trace = fetched_timeline.generate_chrome_trace_format()
+                trace_file = os.path.join(profile_dir, 'profile-{}.json'.format(step))
+                with open(trace_file, 'w') as f:
+                    f.write(chrome_trace)
+                    print('written trace file:', trace_file)
+
             if step % 60 == 0:
                 print('step/sec:', (step-last_step) / (time.time() - time_start))
                 time_start = time.time()
