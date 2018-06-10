@@ -1,7 +1,7 @@
 import os
 import time
 import tensorflow as tf
-from data_tf import build_model_columns, input_fn
+from data_tf import build_model_columns, input_fn, gen_test_data
 
 
 def build_model(filename):
@@ -35,8 +35,13 @@ def main():
     import logging
     logging.basicConfig(level=logging.INFO)
 
+    num_columns = 200
+    data_path = 'data/data.tfrecord'
+
+    gen_test_data(num_columns, data_path)
+
     # build graph
-    model = build_model(filename='/Users/chi/Developer/kelin/data/tfslot/part-m-00000')
+    model = build_model(filename=data_path)
 
     # inspect graph variables
     for col, var in model['cols_to_vars'].items():
